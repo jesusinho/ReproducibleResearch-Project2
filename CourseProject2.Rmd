@@ -1,0 +1,437 @@
+---
+title: "Exploration of NOAA Storm Database and the Impact on Population Health and the Economy"
+author: "Jesus Alvarado"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: cosmo
+    keep_md: no
+    df_print: paged
+  pdf_document:
+    toc: yes
+    df_print: kable
+    number_sections: false
+    fig_caption: yes
+    highlight: tango
+    dev: pdf
+  word_document:
+    toc: yes
+    df_print: paged
+    keep_md: no
+---
+
+## Course Project
+
+**Reproducible Research Course Project 2**
+
+Peer-graded Assignment
+
+* This course project is available on GitHub
+
+    <a href="https://github.com/jesusinho/ReproducibleResearch-Project2" target="_top">Reproducible Research Course Project 2</a>
+    
+* Results are published on rpubs.com in HTML format
+
+    <a href="https://rpubs.com/JesusAlvarado/ReproducibleResearchProject2" target="_top">Reproducible Research Course Project 2</a>
+
+
+## Synonpsis
+
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+## Assignment
+
+The basic goal of this assignment is to explore the NOAA Storm Database and answer some basic questions about severe weather events. You must use the database to answer the questions below and show the code for your entire analysis. Your analysis can consist of tables, figures, or other summaries. You may use any R package you want to support your analysis.
+
+## Environment Setup
+
+```{r setup, include = FALSE}
+# set knitr options
+knitr::opts_chunk$set(echo = TRUE, fig.path='figures/')
+```
+
+Requirements
+
+```{r load-packages, echo = TRUE}
+if (!require(ggplot2)) {
+    install.packages("ggplot2")
+    library(ggplot2)
+}
+if (!require(dplyr)) {
+    install.packages("dplyr")
+    library(dplyr, warn.conflicts = FALSE)
+}
+if (!require(xtable)) {
+    install.packages("xtable")
+    library(xtable, warn.conflicts = FALSE)
+}
+```
+
+Display session information.
+
+```{r display-session-info, echo = TRUE}
+sessionInfo()
+```
+
+## Load Data
+
+The events in the database start in the year 1950 and end in November 2011. In the earlier years of the database there are generally fewer events recorded, most likely due to a lack of good records. More recent years should be considered more complete.
+
+
+```{r load-data, echo = TRUE, cache = TRUE}
+setwd("~/Projects/Coursera/ReproducibleResearch-Project2")
+noaaDataFileURL <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+noaaDataFile <- "Data/repdata-data-StormData.csv.bz2"
+if (!file.exists('Data')) {
+    dir.create('Data')
+}
+if (!file.exists(noaaDataFile)) {
+    download.file(url = noaaDataFileURL, destfile = noaaDataFile)
+}
+noaaData <- read.csv(noaaDataFile, sep = ",", header = TRUE)
+```
+
+Dataset summary
+
+```{r, echo = TRUE}
+names(noaaData)
+```
+
+```{r, echo = TRUE}
+str(noaaData)
+```
+
+```{r, echo = TRUE}
+head(noaaData)
+```
+
+## Data Processing
+
+### Data Subset
+
+For this exercise, the dataset will be filtered to include only the required variables for this use-case.
+
+| Variable     | Description                                                |
+|--------------|------------------------------------------------------------|
+| EVTYPE       | Event type (Flood, Heat, Hurricane, Tornado, ...)          |
+| FATALITIES   | Number of fatalities resulting from event                  |
+| INJURIES     | Number of injuries resulting from event                    |
+| PROPDMG      | Property damage in USD                                     |
+| PROPDMGEXP   | Unit multiplier for property damage (K, M, or B)           |
+| CROPDMG      | Crop damage in USD                                         |
+| CROPDMGEXP   | Unit multiplier for property damage (K, M, or B)           |
+| BGN_DATE     | Begin date of the event                                    |
+| END_DATE     | End date of the event                                      |
+| STATE        | State where the event occurred                             |
+
+```{r create-subset-database, echo = TRUE}
+noaaDataTidy <- subset(noaaData, EVTYPE != "?" &
+                 (FATALITIES > 0 | INJURIES > 0 | PROPDMG > 0 | CROPDMG > 0),
+                 select = c("EVTYPE",
+                            "FATALITIES",
+                            "INJURIES", 
+                            "PROPDMG",
+                            "PROPDMGEXP",
+                            "CROPDMG",
+                            "CROPDMGEXP",
+                            "BGN_DATE",
+                            "END_DATE",
+                            "STATE"))
+dim(noaaDataTidy)
+sum(is.na(noaaDataTidy))
+```
+
+The Dataset has 254632 observations containing 10 variables and no missing values.
+
+### Clean Event Type Data
+
+Total of 487 unique Event are to be listed
+
+```{r display-unique-event-types, echo = TRUE}
+length(unique(noaaDataTidy$EVTYPE))
+```
+
+Some entries contains wrong pluralization, mixed cases and even misspellings. 
+For example, `Strong Wind`, `STRONG WIND`,`Strong Winds`, and `STRONG WINDS`.
+To solve this is required to convert all entries to uppercase and combine into categories.
+
+```{r convert-event-type-toupper, echo = TRUE}
+noaaDataTidy$EVTYPE <- toupper(noaaDataTidy$EVTYPE)
+```
+
+```{r clean-event-type-data, echo = TRUE}
+# AVALANCHE
+noaaDataTidy$EVTYPE <- gsub('.*AVALANCE.*', 'AVALANCHE', noaaDataTidy$EVTYPE)
+
+# BLIZZARD
+noaaDataTidy$EVTYPE <- gsub('.*BLIZZARD.*', 'BLIZZARD', noaaDataTidy$EVTYPE)
+
+# CLOUD
+noaaDataTidy$EVTYPE <- gsub('.*CLOUD.*', 'CLOUD', noaaDataTidy$EVTYPE)
+
+# COLD
+noaaDataTidy$EVTYPE <- gsub('.*COLD.*', 'COLD', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('.*FREEZ.*', 'COLD', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('.*FROST.*', 'COLD', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('.*ICE.*', 'COLD', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('.*LOW TEMPERATURE RECORD.*', 'COLD', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('.*LO.*TEMP.*', 'COLD', noaaDataTidy$EVTYPE)
+
+# DRY
+noaaDataTidy$EVTYPE <- gsub('.*DRY.*', 'DRY', noaaDataTidy$EVTYPE)
+
+# DUST
+noaaDataTidy$EVTYPE <- gsub('.*DUST.*', 'DUST', noaaDataTidy$EVTYPE)
+
+# FIRE
+noaaDataTidy$EVTYPE <- gsub('.*FIRE.*', 'FIRE', noaaDataTidy$EVTYPE)
+
+# FLOOD
+noaaDataTidy$EVTYPE <- gsub('.*FLOOD.*', 'FLOOD', noaaDataTidy$EVTYPE)
+
+# FOG
+noaaDataTidy$EVTYPE <- gsub('.*FOG.*', 'FOG', noaaDataTidy$EVTYPE)
+
+# HAIL
+noaaDataTidy$EVTYPE <- gsub('.*HAIL.*', 'HAIL', noaaDataTidy$EVTYPE)
+
+# HEAT
+noaaDataTidy$EVTYPE <- gsub('.*HEAT.*', 'HEAT', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('.*WARM.*', 'HEAT', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('.*HIGH.*TEMP.*', 'HEAT', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('.*RECORD HIGH TEMPERATURES.*', 'HEAT', noaaDataTidy$EVTYPE)
+
+# HYPOTHERMIA/EXPOSURE
+noaaDataTidy$EVTYPE <- gsub('.*HYPOTHERMIA.*', 'HYPOTHERMIA/EXPOSURE', noaaDataTidy$EVTYPE)
+
+# LANDSLIDE
+noaaDataTidy$EVTYPE <- gsub('.*LANDSLIDE.*', 'LANDSLIDE', noaaDataTidy$EVTYPE)
+
+# LIGHTNING
+noaaDataTidy$EVTYPE <- gsub('^LIGHTNING.*', 'LIGHTNING', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('^LIGNTNING.*', 'LIGHTNING', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('^LIGHTING.*', 'LIGHTNING', noaaDataTidy$EVTYPE)
+
+# MICROBURST
+noaaDataTidy$EVTYPE <- gsub('.*MICROBURST.*', 'MICROBURST', noaaDataTidy$EVTYPE)
+
+# MUDSLIDE
+noaaDataTidy$EVTYPE <- gsub('.*MUDSLIDE.*', 'MUDSLIDE', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('.*MUD SLIDE.*', 'MUDSLIDE', noaaDataTidy$EVTYPE)
+
+# RAIN
+noaaDataTidy$EVTYPE <- gsub('.*RAIN.*', 'RAIN', noaaDataTidy$EVTYPE)
+
+# RIP CURRENT
+noaaDataTidy$EVTYPE <- gsub('.*RIP CURRENT.*', 'RIP CURRENT', noaaDataTidy$EVTYPE)
+
+# STORM
+noaaDataTidy$EVTYPE <- gsub('.*STORM.*', 'STORM', noaaDataTidy$EVTYPE)
+
+# SUMMARY
+noaaDataTidy$EVTYPE <- gsub('.*SUMMARY.*', 'SUMMARY', noaaDataTidy$EVTYPE)
+
+# TORNADO
+noaaDataTidy$EVTYPE <- gsub('.*TORNADO.*', 'TORNADO', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('.*TORNDAO.*', 'TORNADO', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('.*LANDSPOUT.*', 'TORNADO', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('.*WATERSPOUT.*', 'TORNADO', noaaDataTidy$EVTYPE)
+
+# SURF
+noaaDataTidy$EVTYPE <- gsub('.*SURF.*', 'SURF', noaaDataTidy$EVTYPE)
+
+# VOLCANIC
+noaaDataTidy$EVTYPE <- gsub('.*VOLCANIC.*', 'VOLCANIC', noaaDataTidy$EVTYPE)
+
+# WET
+noaaDataTidy$EVTYPE <- gsub('.*WET.*', 'WET', noaaDataTidy$EVTYPE)
+
+# WIND
+noaaDataTidy$EVTYPE <- gsub('.*WIND.*', 'WIND', noaaDataTidy$EVTYPE)
+
+# WINTER
+noaaDataTidy$EVTYPE <- gsub('.*WINTER.*', 'WINTER', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('.*WINTRY.*', 'WINTER', noaaDataTidy$EVTYPE)
+noaaDataTidy$EVTYPE <- gsub('.*SNOW.*', 'WINTER', noaaDataTidy$EVTYPE)
+```
+
+The number of unique Event Type values were reduced to 81
+
+```{r display-unique-event-types-tidy, echo = TRUE}
+length(unique(noaaDataTidy$EVTYPE))
+```
+
+### Clean Date Data
+
+The `BNG_START` and `END_DATE` variables are stored as
+factors which should be made available as *date* types that can be worked with.
+
+Four new variables based on date variables in the tidy dataset will be created:
+
+| Variable     | Description                                   |
+|--------------|-----------------------------------------------|
+| DATE_START   | Begin date of the event (date type)           |
+| DATE_END     | End date of the event (date type).            |
+| YEAR         | Year the event started                        |
+| DURATION     | Duration (in hours)                           |
+
+```{r clean-date-data, echo = TRUE}
+noaaDataTidy$DATE_START <- as.Date(noaaDataTidy$BGN_DATE, format = "%m/%d/%Y")
+noaaDataTidy$DATE_END <- as.Date(noaaDataTidy$END_DATE, format = "%m/%d/%Y")
+noaaDataTidy$YEAR <- as.integer(format(noaaDataTidy$DATE_START, "%Y"))
+noaaDataTidy$DURATION <- as.numeric(noaaDataTidy$DATE_END - noaaDataTidy$DATE_START)/3600
+```
+
+### Clean Economic Data
+
+Information about Property Damage is logged using following variables:
+ - `PROPDMG` (with magnitudes in K(thousands), M(Millions), B(Billions) for )
+ - `PROPDMGEXP`
+ - `PROPDMG` is the mantissa (the significant) rounded to three significant digits
+ - `PROPDMGEXP` is the exponent (the multiplier).
+The same approach is used for Crop Damage where the `CROPDMG` variable is
+encoded by the `CROPDMGEXP` variable.
+
+ A quick review of the data for the PROPDMGEXP and CROPDMGEXP variables shows that there are several other characters being logged.
+
+```{r convert-exp-char-toupper, echo = TRUE}
+table(toupper(noaaDataTidy$PROPDMGEXP))
+table(toupper(noaaDataTidy$CROPDMGEXP))
+```
+
+To calculate costs, the `PROPDMGEXP` and `CROPDMGEXP` variables
+should be mapped to a factor which will be used to calculate the
+costs for both property and crop damage. 
+Two new variables should be created to store damage costs:
+
+* PROP_COST
+* CROP_COST
+
+```{r damage-costs, echo = TRUE}
+# function to get factor
+getMultiplier <- function(exp) {
+    exp <- toupper(exp);
+    if (exp == "")  return (10^0);
+    if (exp == "-") return (10^0);
+    if (exp == "?") return (10^0);
+    if (exp == "+") return (10^0);
+    if (exp == "0") return (10^0);
+    if (exp == "1") return (10^1);
+    if (exp == "2") return (10^2);
+    if (exp == "3") return (10^3);
+    if (exp == "4") return (10^4);
+    if (exp == "5") return (10^5);
+    if (exp == "6") return (10^6);
+    if (exp == "7") return (10^7);
+    if (exp == "8") return (10^8);
+    if (exp == "9") return (10^9);
+    if (exp == "H") return (10^2);
+    if (exp == "K") return (10^3);
+    if (exp == "M") return (10^6);
+    if (exp == "B") return (10^9);
+    return (NA);
+}
+
+# calculate property damage and crop damage costs (in billions)
+noaaDataTidy$PROP_COST <- with(noaaDataTidy, as.numeric(PROPDMG) * sapply(PROPDMGEXP, getMultiplier))/10^9
+noaaDataTidy$CROP_COST <- with(noaaDataTidy, as.numeric(CROPDMG) * sapply(CROPDMGEXP, getMultiplier))/10^9
+```
+
+### Summarize Data
+
+Create a summarized dataset of health impact data (fatalities + injuries).
+Sort the results in descending order by health impact.
+
+```{r health-impact-summary, echo = TRUE}
+healthImpactData <- aggregate(x = list(HEALTH_IMPACT = noaaDataTidy$FATALITIES + noaaDataTidy$INJURIES), 
+                                  by = list(EVENT_TYPE = noaaDataTidy$EVTYPE), 
+                                  FUN = sum,
+                                  na.rm = TRUE)
+healthImpactData <- healthImpactData[order(healthImpactData$HEALTH_IMPACT, decreasing = TRUE),]
+```
+
+Create a summarized dataset of damage impact costs (property damage + crop damage).
+Sort the results in descending order by damage cost.
+
+```{r damage-cost-impact-summary, echo = TRUE}
+damageCostImpactData <- aggregate(x = list(DAMAGE_IMPACT = noaaDataTidy$PROP_COST + noaaDataTidy$CROP_COST), 
+                                  by = list(EVENT_TYPE = noaaDataTidy$EVTYPE), 
+                                  FUN = sum,
+                                  na.rm = TRUE)
+damageCostImpactData <- damageCostImpactData[order(damageCostImpactData$DAMAGE_IMPACT, decreasing = TRUE),]
+```
+
+## Results
+
+### Event Types Most Harmful to Population Health
+
+Fatalities and injuries have the most harmful impact on population health. The
+results below display the 10 most harmful weather events in terms of population
+health in the U.S.
+
+```{r health-impact-table, echo = TRUE, message = FALSE, results = 'asis'}
+print(xtable(head(healthImpactData, 10),
+             caption = "Top 10 Most Harmful Weather Events to Population Health"),
+             caption.placement = 'top',
+             type = "html",
+             include.rownames = FALSE,
+             html.table.attributes='class="table-bordered", width="100%"')
+```
+<br />
+
+```{r health-impact-chart, echo = TRUE, fig.path='figures/'}
+healthImpactChart <- ggplot(head(healthImpactData, 10),
+                            aes(x = reorder(EVENT_TYPE, HEALTH_IMPACT), y = HEALTH_IMPACT, fill = EVENT_TYPE)) +
+                            coord_flip() +
+                            geom_bar(stat = "identity") + 
+                            xlab("Event Type") +
+                            ylab("Total Fatalities and Injures") +
+                            theme(plot.title = element_text(size = 14, hjust = 0.5)) +
+                            ggtitle("Top 10 Most Harmful Weather Events to Population Health")
+print(healthImpactChart)
+```
+
+### Event Types with Greatest Economic Consequences
+
+Property and crop damage have the most harmful impact on the economy. The
+results below display the 10 most harmful weather events in terms economic
+consequences in the U.S.
+
+```{r economic-impact-table, echo = TRUE, message = FALSE, results = 'asis'}
+print(xtable(head(damageCostImpactData, 10),
+             caption = "Top 10 Events with Greatest Economic Consequences"),
+             caption.placement = 'top',
+             type = "html",
+             include.rownames = FALSE,
+             html.table.attributes='class="table-bordered", width="100%"')
+```
+<br />
+
+```{r economic-impact-chart, echo = TRUE, fig.path='figures/'}
+damageCostImpactChart <- ggplot(head(damageCostImpactData, 10),
+                            aes(x = reorder(EVENT_TYPE, DAMAGE_IMPACT), y = DAMAGE_IMPACT, fill = EVENT_TYPE)) +
+                            coord_flip() +
+                            geom_bar(stat = "identity") + 
+                            xlab("Event Type") +
+                            ylab("Total Property / Crop Damage Cost (in Billions)") +
+                            theme(plot.title = element_text(size = 14, hjust = 0.5)) +
+                            ggtitle("Top 10 Events with Greatest Economic Consequences")
+print(damageCostImpactChart)
+```
+
+## Conclusion
+
+After previous analysis we found out that:
+
+
+* **Which types of weather events are most harmful to population health?**
+    
+    Tornadoes are responsible for the greatest number of fatalities and injuries.
+    
+* **Which types of weather events have the greatest economic consequences?**
+    
+    Floods are responsible for causing the most property damage and crop damage costs.
